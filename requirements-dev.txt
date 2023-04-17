@@ -1,0 +1,3 @@
+# Linting
+pre-commit
+ruff
