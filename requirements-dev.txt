@@ -1,3 +1,8 @@
 # Linting
 pre-commit
 ruff
+
+# Jupyter
+ipykernel
+ipywidgets
+tqdm
