@@ -180,3 +180,18 @@ class InterruptHandler(object):
         self.released = True
 
         return True
+    
+
+def get_num_param_and_model_size(model):
+    num_params = sum(p.nelement() for p in model.parameters())
+    num_trainable = sum(p.nelement() for p in model.parameters() if p.requires_grad)
+    print('Total Params           : {}'.format(num_params))
+    print('Total Trainable Params : {}'.format(num_trainable))
+
+    num_buffers = sum(b.nelement() for b in model.buffers())
+    print('Total Buffers          : {}'.format(num_buffers))
+    
+    size_params = sum(p.nelement() * p.element_size() for p in model.parameters())
+    size_buffers = sum(p.nelement() * p.element_size() for p in model.buffers())
+    size_all_mb = (size_params + size_buffers) / 1024**2
+    print('Model size             : {:.3f}MB'.format(size_all_mb))
