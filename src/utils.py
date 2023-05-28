@@ -5,7 +5,7 @@ from urllib.parse import unquote
 from bs4 import BeautifulSoup
 
 
-def get_article_latest_revid(title: str, session = None) -> int:
+def get_article_latest_revid(title: str, session=None) -> int:
     """
     Get latest revision id of Wikipedia article
     """
@@ -14,8 +14,8 @@ def get_article_latest_revid(title: str, session = None) -> int:
         "action": "query",
         "format": "json",
         "prop": "revisions",
-        "rvslots":"*",
-        "rvprop":"ids",
+        "rvslots": "*",
+        "rvprop": "ids",
         "titles": title,
     }
     if session:
@@ -24,30 +24,27 @@ def get_article_latest_revid(title: str, session = None) -> int:
         r = requests.get(url=url, params=params)
     r = r.json()
     try:
-        r = r['query']['pages'].values()
-        return list(r)[0]['revisions'][0]['revid']
+        r = r["query"]["pages"].values()
+        return list(r)[0]["revisions"][0]["revid"]
     except Exception:
         return
-      
+
 
 def get_predicted_category(revid: int, top_k=3, threshold=0.6) -> list[str]:
     """
     Get predicted category of article using it's revision id
     """
     url = "https://ores.wikimedia.org/v3/scores/enwiki/?"
-    params = {
-        "models": "articletopic",
-        "revids": revid
-    }
+    params = {"models": "articletopic", "revids": revid}
     r = requests.get(url=url, params=params)
     r = r.json()
-    scores = r['enwiki']['scores'][str(revid)]['articletopic']['score']
-    probs = list(scores['probability'].items())
+    scores = r["enwiki"]["scores"][str(revid)]["articletopic"]["score"]
+    probs = list(scores["probability"].items())
     probs.sort(key=lambda x: x[1], reverse=True)
     return [cat for cat, prob in probs[:top_k] if prob > threshold]
 
 
-def get_article_text(title: str, session = None, verbose=0) -> str:
+def get_article_text(title: str, session=None, verbose=0) -> str:
     """
     Get HTML contents of a Wikipedia article
     """
@@ -59,9 +56,9 @@ def get_article_text(title: str, session = None, verbose=0) -> str:
     else:
         if verbose:
             print("Got status code", res.status_code, "getting", url)
-    
 
-def parse_paragraph_anchors(text: str, ent2idx: dict[str, int] = {})-> dict:
+
+def parse_paragraph_anchors(text: str, ent2idx: dict[str, int] = {}) -> dict:
     """
     Get anchor offsets, targets and anchor text lengths in a paragraph
     """
@@ -74,7 +71,7 @@ def parse_paragraph_anchors(text: str, ent2idx: dict[str, int] = {})-> dict:
             end = idx + text[idx:].find("</a>") + 4
             # get the href and anchor text
             anchor = BeautifulSoup(text[idx:end], "lxml").a
-            entity = anchor['href'][6:].replace("_", " ")
+            entity = anchor["href"][6:].replace("_", " ")
             offsets.append(len(out))
             lengths.append(len(anchor.text.strip()))
             targets.append(ent2idx[entity] if ent2idx else entity)
@@ -83,15 +80,19 @@ def parse_paragraph_anchors(text: str, ent2idx: dict[str, int] = {})-> dict:
         else:
             out += text[idx]
             idx += 1
-    
-    return {'text': out.rstrip(), 'targets': targets, 'lengths': lengths, 
-            'offsets': offsets}    
-    
-    
-def parse_article_text(text: str, ent2idx: dict[str, int] = {})-> dict:
+
+    return {
+        "text": out.rstrip(),
+        "targets": targets,
+        "lengths": lengths,
+        "offsets": offsets,
+    }
+
+
+def parse_article_text(text: str, ent2idx: dict[str, int] = {}) -> dict:
     """
     Parse HTML of a Wikipedia Article
-    
+
     Args
     ---
     text
@@ -103,8 +104,8 @@ def parse_article_text(text: str, ent2idx: dict[str, int] = {})-> dict:
 
     Returns
     ---
-    list (optional) 
-        a list of dict containing 
+    list (optional)
+        a list of dict containing
         {
             'anchors': list[str],
             'offsets': list[int],
@@ -114,18 +115,18 @@ def parse_article_text(text: str, ent2idx: dict[str, int] = {})-> dict:
     """
     parsed = []
     soup = BeautifulSoup(text, "lxml").body
-    
+
     # remove citation text and anchors
     for elem in soup.find_all("sup"):
         elem.decompose()
-    
+
     # select all paragraphs remove all tags except anchors
     for p in soup.find_all("p", {"class": None, "style": None}):
         for e in p.find_all():
             # if the element is a wiki anchor keep it
-            if e.name == 'a' and e.has_attr("href") and e['href'].startswith("/wiki/"):
-                entity = e['href'][6:].replace("_", " ")
-                # if ent2idx is provided and the anchor is OOV entity 
+            if e.name == "a" and e.has_attr("href") and e["href"].startswith("/wiki/"):
+                entity = e["href"][6:].replace("_", " ")
+                # if ent2idx is provided and the anchor is OOV entity
                 # remove the anhor but keep the anchor text
                 if ent2idx and entity not in ent2idx.keys():
                     e.unwrap()
@@ -135,15 +136,15 @@ def parse_article_text(text: str, ent2idx: dict[str, int] = {})-> dict:
                 e.unwrap()
         # parse paragraph html containing the anchor tags
         p = str(p)[3:-4]
-        p = p.replace('\xa0', ' ').replace('\n', ' ')
+        p = p.replace("\xa0", " ").replace("\n", " ")
         try:
             p = parse_paragraph_anchors(p, ent2idx)
         except Exception as e:
             pass
         else:
-            if len(p['text']) > 1:
+            if len(p["text"]) > 1:
                 parsed.append(p)
-    
+
     return parsed
 
 
@@ -152,6 +153,7 @@ class InterruptHandler(object):
     Detect Keyboard Interrupt and define custom handler
     source: https://stackoverflow.com/questions/1112343/how-do-i-capture-sigint-in-python
     """
+
     def __init__(self, sig=signal.SIGINT):
         self.sig = sig
 
@@ -180,18 +182,18 @@ class InterruptHandler(object):
         self.released = True
 
         return True
-    
+
 
 def get_num_param_and_model_size(model):
     num_params = sum(p.nelement() for p in model.parameters())
     num_trainable = sum(p.nelement() for p in model.parameters() if p.requires_grad)
-    print('Total Params           : {}'.format(num_params))
-    print('Total Trainable Params : {}'.format(num_trainable))
+    print("Total Params           : {}".format(num_params))
+    print("Total Trainable Params : {}".format(num_trainable))
 
     num_buffers = sum(b.nelement() for b in model.buffers())
-    print('Total Buffers          : {}'.format(num_buffers))
-    
+    print("Total Buffers          : {}".format(num_buffers))
+
     size_params = sum(p.nelement() * p.element_size() for p in model.parameters())
     size_buffers = sum(p.nelement() * p.element_size() for p in model.buffers())
     size_all_mb = (size_params + size_buffers) / 1024**2
-    print('Model size             : {:.3f}MB'.format(size_all_mb))
+    print("Model size             : {:.3f}MB".format(size_all_mb))
