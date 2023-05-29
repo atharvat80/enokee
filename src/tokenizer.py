@@ -37,6 +37,8 @@ class LUKETokenizer:
             **kwargs
         )
 
+        del inputs['entity_ids']
+
         return inputs
 
 
