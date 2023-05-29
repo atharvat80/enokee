@@ -1,22 +1,25 @@
 import ast
+from collections import OrderedDict
 
 import pandas as pd
 import torch
 
 
 class DataLoader:
-    def __init__(self, csv_path, batch_size):
+    def __init__(self, csv_path, batch_size, skiprows=0, max_entities=32):
         self.csv_path = csv_path
         self.batch_size = batch_size
-        self._initialize_iterator()
+        self.max_entities = max_entities
+        self._initialize_iterator(skiprows)
 
-    def _initialize_iterator(self):
+    def _initialize_iterator(self, skiprows):
         self.iterator = pd.read_csv(
             self.csv_path,
             compression="infer",
             names=["sentences", "spans", "targets"],
             iterator=True,
             chunksize=self.batch_size,
+            skiprows=skiprows
         )
 
     def _pad_targets(self, targets, padding_value=-1):
@@ -35,8 +38,13 @@ class DataLoader:
         try:
             batch = self.iterator.get_chunk()
             sentences = batch.sentences.to_list()
-            targets = self._pad_targets(batch.targets.map(ast.literal_eval))
+            # clip max targets
+            targets = batch.targets.map(ast.literal_eval)
+            targets = [i[:self.max_entities] for i in targets]
+            targets = self._pad_targets(targets)
+            # clip max spans
             spans = batch.spans.map(ast.literal_eval).to_list()
+            spans = [i[:self.max_entities] for i in spans]
             return sentences, spans, targets
         except StopIteration:
             self._initialize_iterator()  # Reset iterator
@@ -44,3 +52,19 @@ class DataLoader:
 
     def reset(self):
         self._initialize_iterator()
+
+    def get_state_dict(self):
+        return OrderedDict(
+            {
+                "csv_path": self.csv_path,
+                "batch_size": self.batch_size,
+                "rows_read": self.iterator._currow,
+            }
+        )
+
+    @classmethod
+    def from_state_dict(cls, state_dict):
+        dataloader = cls(state_dict["csv_path"], 
+                         state_dict["batch_size"],
+                         state_dict["rows_read"])
+        return dataloader
