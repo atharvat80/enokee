@@ -1,6 +1,7 @@
+from collections import OrderedDict
+
 import torch
 import torch.nn as nn
-
 from transformers import AutoModel
 from transformers.utils import logging
 
@@ -11,7 +12,7 @@ class EnokeeConfig:
     def __init__(
         self,
         d_model=768,
-        n_heads=6,
+        n_heads=12,
         d_ff=1028,
         n_layers=4,
         dropout=0.1,
@@ -69,12 +70,28 @@ class EnokeeEncoder(nn.Module):
     def from_config(cls, config):
         return cls(config)
 
+    def get_state_dict(self):
+        state_dict = OrderedDict(
+            {
+                key: params
+                for key, params in self.state_dict().items()
+                if not (key.startswith("base_model"))
+            }
+        )
+        return state_dict
+
     def forward(self, input_ids, entity_position_ids, entity_attention_mask, **kwargs):
         # encode context
         last_hidden_state = self.base_model(input_ids)["last_hidden_state"]
         # gather mention tokens
         batch_size, max_mentions, max_mention_len = entity_position_ids.shape
-        mentions = torch.zeros(batch_size, max_mentions, max_mention_len, self.d_model)
+        mentions = torch.zeros(
+            batch_size,
+            max_mentions,
+            max_mention_len,
+            self.d_model,
+            device=last_hidden_state.device,
+        )
         for i in range(batch_size):
             for j in range(max_mentions):
                 if entity_attention_mask[i, j] == 0:
