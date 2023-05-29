@@ -1,190 +1,76 @@
-import signal
+import time
+from pathlib import Path
 
-import requests
-from urllib.parse import unquote
-from bs4 import BeautifulSoup
+import torch
 
 
-def get_article_latest_revid(title: str, session=None) -> int:
-    """
-    Get latest revision id of Wikipedia article
-    """
-    url = "https://en.wikipedia.org/w/api.php"
-    params = {
-        "action": "query",
-        "format": "json",
-        "prop": "revisions",
-        "rvslots": "*",
-        "rvprop": "ids",
-        "titles": title,
+def save_checkpoint(
+    output_dir, step, epoch, dataloader, model, optimizer, scheduler, max_chkpt=3
+):
+    # Create the output directory if it doesn't exist
+    output_dir.mkdir(exist_ok=True)
+
+    # Generate the filename based on the current time
+    current_time = time.strftime("%Y-%m-%d_%H-%M-%S", time.gmtime())
+    filename = f"checkpoint-{current_time}.chkpt"
+    file_path = output_dir / filename
+
+    # Save the checkpoint
+    state_dict = {
+        "step_epoch": (step, epoch),
+        "dataloader_state_dict": dataloader.get_state_dict(),
+        "model_state_dict": model.get_state_dict(),
+        "optimizer_state_dict": optimizer.state_dict(),
     }
-    if session:
-        r = session.get(url=url, params=params)
-    else:
-        r = requests.get(url=url, params=params)
-    r = r.json()
-    try:
-        r = r["query"]["pages"].values()
-        return list(r)[0]["revisions"][0]["revid"]
-    except Exception:
-        return
+    if scheduler is not None:
+        state_dict["scheduler_state_dict"] = scheduler.state_dict()
+
+    torch.save(state_dict, file_path)
+
+    # Get a list of existing checkpoint files in the output directory
+    existing_files = sorted(
+        [f.name for f in output_dir.iterdir() if f.name.startswith("checkpoint-")]
+    )
+
+    # Delete the oldest checkpoint if max_chkpt files already exist
+    if len(existing_files) > max_chkpt:
+        oldest_file = output_dir / existing_files[0]
+        oldest_file.unlink()
 
 
-def get_predicted_category(revid: int, top_k=3, threshold=0.6) -> list[str]:
-    """
-    Get predicted category of article using it's revision id
-    """
-    url = "https://ores.wikimedia.org/v3/scores/enwiki/?"
-    params = {"models": "articletopic", "revids": revid}
-    r = requests.get(url=url, params=params)
-    r = r.json()
-    scores = r["enwiki"]["scores"][str(revid)]["articletopic"]["score"]
-    probs = list(scores["probability"].items())
-    probs.sort(key=lambda x: x[1], reverse=True)
-    return [cat for cat, prob in probs[:top_k] if prob > threshold]
+def load_checkpoint(output_dir: Path, device="cpu"):
+    # Get a list of existing checkpoint files in the output directory
+    existing_files = sorted(
+        [f.name for f in output_dir.iterdir() if f.name.startswith("checkpoint-")]
+    )
 
+    if not existing_files:
+        raise FileNotFoundError("No checkpoint files found in the output directory.")
 
-def get_article_text(title: str, session=None, verbose=0) -> str:
-    """
-    Get HTML contents of a Wikipedia article
-    """
-    title = title.replace(" ", "_")
-    url = "https://en.wikipedia.org/wiki/" + requests.compat.quote_plus(title)
-    res = session.get(url) if session else requests.get(url)
-    if res.status_code == requests.codes.ok:
-        return unquote(res.text)
-    else:
-        if verbose:
-            print("Got status code", res.status_code, "getting", url)
+    # Load the latest checkpoint file
+    latest_file = output_dir / existing_files[-1]
+    checkpoint = torch.load(latest_file, map_location=device)
 
+    # Load the checkpoint values
+    step, epoch = checkpoint["step_epoch"]
+    dataloader_state_dict = checkpoint["dataloader_state_dict"]
+    model_state_dict = checkpoint["model_state_dict"]
+    optimizer_state_dict = checkpoint["optimizer_state_dict"]
+    scheduler_state_dict = checkpoint.get("scheduler_state_dict", None)
 
-def parse_paragraph_anchors(text: str, ent2idx: dict[str, int] = {}) -> dict:
-    """
-    Get anchor offsets, targets and anchor text lengths in a paragraph
-    """
-    targets, lengths, offsets = [], [], []
-    out = ""
-    idx = 0
-    while idx < len(text):
-        if text[idx] == "<":
-            # find the end of the anchor tag
-            end = idx + text[idx:].find("</a>") + 4
-            # get the href and anchor text
-            anchor = BeautifulSoup(text[idx:end], "lxml").a
-            entity = anchor["href"][6:].replace("_", " ")
-            offsets.append(len(out))
-            lengths.append(len(anchor.text.strip()))
-            targets.append(ent2idx[entity] if ent2idx else entity)
-            out += anchor.text.strip()
-            idx = end
-        else:
-            out += text[idx]
-            idx += 1
-
-    return {
-        "text": out.rstrip(),
-        "targets": targets,
-        "lengths": lengths,
-        "offsets": offsets,
-    }
-
-
-def parse_article_text(text: str, ent2idx: dict[str, int] = {}) -> dict:
-    """
-    Parse HTML of a Wikipedia Article
-
-    Args
-    ---
-    text
-        HTML string of the article
-
-    entity_vocab (optional)
-        a dictionary of the entities to keep, all anchors will be kept if None
-
-
-    Returns
-    ---
-    list (optional)
-        a list of dict containing
-        {
-            'anchors': list[str],
-            'offsets': list[int],
-            'targets': list[str],
-            'text': str
-        }
-    """
-    parsed = []
-    soup = BeautifulSoup(text, "lxml").body
-
-    # remove citation text and anchors
-    for elem in soup.find_all("sup"):
-        elem.decompose()
-
-    # select all paragraphs remove all tags except anchors
-    for p in soup.find_all("p", {"class": None, "style": None}):
-        for e in p.find_all():
-            # if the element is a wiki anchor keep it
-            if e.name == "a" and e.has_attr("href") and e["href"].startswith("/wiki/"):
-                entity = e["href"][6:].replace("_", " ")
-                # if ent2idx is provided and the anchor is OOV entity
-                # remove the anhor but keep the anchor text
-                if ent2idx and entity not in ent2idx.keys():
-                    e.unwrap()
-            # if the element is not an anchor or plaintext remove the
-            # but keep the innerHTML
-            elif e.name is not None:
-                e.unwrap()
-        # parse paragraph html containing the anchor tags
-        p = str(p)[3:-4]
-        p = p.replace("\xa0", " ").replace("\n", " ")
-        try:
-            p = parse_paragraph_anchors(p, ent2idx)
-        except Exception as e:
-            pass
-        else:
-            if len(p["text"]) > 1:
-                parsed.append(p)
-
-    return parsed
-
-
-class InterruptHandler(object):
-    """
-    Detect Keyboard Interrupt and define custom handler
-    source: https://stackoverflow.com/questions/1112343/how-do-i-capture-sigint-in-python
-    """
-
-    def __init__(self, sig=signal.SIGINT):
-        self.sig = sig
-
-    def __enter__(self):
-        self.interrupted = False
-        self.released = False
-        self.original_handler = signal.getsignal(self.sig)
-
-        def handler(signum, frame):
-            self.release()
-            self.interrupted = True
-
-        signal.signal(self.sig, handler)
-
-        return self
-
-    def __exit__(self, type, value, tb):
-        self.release()
-
-    def release(self):
-        if self.released:
-            return False
-
-        signal.signal(self.sig, self.original_handler)
-
-        self.released = True
-
-        return True
+    # Return the loaded values
+    return (
+        step,
+        epoch,
+        dataloader_state_dict,
+        model_state_dict,
+        optimizer_state_dict,
+        scheduler_state_dict,
+    )
 
 
 def get_num_param_and_model_size(model):
+    print("*" * 35)
     num_params = sum(p.nelement() for p in model.parameters())
     num_trainable = sum(p.nelement() for p in model.parameters() if p.requires_grad)
     print("Total Params           : {}".format(num_params))
@@ -197,3 +83,4 @@ def get_num_param_and_model_size(model):
     size_buffers = sum(p.nelement() * p.element_size() for p in model.buffers())
     size_all_mb = (size_params + size_buffers) / 1024**2
     print("Model size             : {:.3f}MB".format(size_all_mb))
+    print("*" * 35)
