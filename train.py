@@ -66,7 +66,7 @@ def train(
         epoch += 1
 
 
-def main(output_dir, dataset_path, default_output_dir, batch_size):
+def main(output_dir, dataset_path, default_output_dir, batch_size, compile_model=True):
     # initialise dataloader, model, optimizer and (optionally schedular)
     step = 0
     epoch = 0
@@ -116,6 +116,12 @@ def main(output_dir, dataset_path, default_output_dir, batch_size):
     # initialise summary writer
     logger = SummaryWriter(output_dir)
     # train
+    if compile_model and torch.__version__.startswith("2"):
+        try:
+            model = torch.compile(model)
+        except RuntimeError:
+            print("WARN: Could not compile model, unsupported platform")
+
     try:
         train(
             output_dir,
