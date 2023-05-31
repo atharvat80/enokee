@@ -10,6 +10,8 @@ from src.model import EnokeeConfig, EnokeeEncoder
 from src.tokenizer import LUKETokenizer
 from src.utils import get_num_param_and_model_size, load_checkpoint, save_checkpoint
 
+torch.manual_seed(42)
+torch.cuda.manual_seed(42)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -47,7 +49,7 @@ def train(
             # forward pass
             inputs = tokenizer(sentences, spans).to(device)
             outputs = model(**inputs)
-            outputs = outputs.view(-1, 50000)
+            outputs = outputs.view(-1, 51000)
             # loss and backward pass
             loss = criterion(softmax(outputs, dim=1), targets.flatten().to(device))
             loss.backward()
@@ -55,6 +57,7 @@ def train(
             optimizer.step()
             if scheduler is not None:
                 scheduler.step()
+            pbar.set_postfix({"loss": loss.item()})
             # save checkpoints
             if step % save_every == 0:
                 save_checkpoint(
@@ -71,14 +74,19 @@ def train(
 
 
 def main(
-    output_dir, dataset_path, default_output_dir, batch_size, epochs, compile_model=True
+    output_dir, 
+    dataset_path, 
+    default_output_dir, 
+    batch_size, 
+    epochs, 
+    compile_model=False
 ):
     # initialise dataloader, model, optimizer and (optionally schedular)
     step = 0
     epoch = 0
     dataloader = None
     config = EnokeeConfig()
-    model = EnokeeEncoder(config).to(device)
+    model = EnokeeEncoder(config).to(device=device)
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
     scheduler = None
 

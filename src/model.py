@@ -16,7 +16,7 @@ class EnokeeConfig:
         d_ff=1028,
         n_layers=4,
         dropout=0.1,
-        num_entities=50000,
+        num_entities=51000,
     ):
         self.d_model = d_model
         self.n_heads = n_heads
