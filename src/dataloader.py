@@ -6,10 +6,9 @@ import torch
 
 
 class DataLoader:
-    def __init__(self, csv_path, batch_size, skiprows=0, max_entities=32):
+    def __init__(self, csv_path, batch_size, skiprows=0):
         self.csv_path = csv_path
         self.batch_size = batch_size
-        self.max_entities = max_entities
         self._initialize_iterator(skiprows)
 
     def _initialize_iterator(self, skiprows):
@@ -38,20 +37,12 @@ class DataLoader:
         try:
             batch = self.iterator.get_chunk()
             sentences = batch.sentences.to_list()
-            # clip max targets
-            targets = batch.targets.map(ast.literal_eval)
-            targets = [i[:self.max_entities] for i in targets]
-            targets = self._pad_targets(targets)
-            # clip max spans
+            targets = self._pad_targets(batch.targets.map(ast.literal_eval))
             spans = batch.spans.map(ast.literal_eval).to_list()
-            spans = [i[:self.max_entities] for i in spans]
             return sentences, spans, targets
         except StopIteration:
             self._initialize_iterator()  # Reset iterator
             raise StopIteration
-
-    def reset(self):
-        self._initialize_iterator()
 
     def get_state_dict(self):
         return OrderedDict(
