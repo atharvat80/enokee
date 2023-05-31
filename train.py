@@ -3,6 +3,7 @@ from pathlib import Path
 
 import torch
 from torch.utils.tensorboard import SummaryWriter
+from tqdm import tqdm
 
 from src.dataloader import DataLoader
 from src.model import EnokeeConfig, EnokeeEncoder
@@ -18,9 +19,9 @@ def train(
     dataloader,
     model,
     optimizer,
+    epochs,
     scheduler=None,
     logger=None,
-    epochs=5,
     save_every=100,
     previous_state=(0, 0),
     clip_val=5,
@@ -38,7 +39,9 @@ def train(
     softmax = torch.nn.functional.log_softmax
     tokenizer = LUKETokenizer()
     while epoch < epochs:
-        for sentences, spans, targets in dataloader:
+        total = 42299053 - dataloader.iterator._currow
+        pbar = tqdm(dataloader, desc=f"[EPOCH {epoch}|{epochs}]", total=total)
+        for sentences, spans, targets in pbar:
             # zero grad
             optimizer.zero_grad()
             # forward pass
@@ -62,18 +65,21 @@ def train(
                     logger.add_scalar("Loss/Train", loss.item(), step)
             # global step
             step += 1
+            pbar.update(dataloader.batch_size)
         # global epoch
         epoch += 1
 
 
-def main(output_dir, dataset_path, default_output_dir, batch_size, compile_model=True):
+def main(
+    output_dir, dataset_path, default_output_dir, batch_size, epochs, compile_model=True
+):
     # initialise dataloader, model, optimizer and (optionally schedular)
     step = 0
     epoch = 0
     dataloader = None
     config = EnokeeConfig()
     model = EnokeeEncoder(config).to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=5e-5)
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
     scheduler = None
 
     # load checkpoints if exist
@@ -90,6 +96,7 @@ def main(output_dir, dataset_path, default_output_dir, batch_size, compile_model
         ) = load_checkpoint(output_dir, device)
         # load dataloader_state_dict
         dataloader = DataLoader.from_state_dict(dataloader_state_dict)
+        dataloader.batch_size = batch_size
         # load model_state_dict
         model.load_state_dict(model_state_dict, strict=False)
         # load optimizer_state_dict
@@ -128,6 +135,7 @@ def main(output_dir, dataset_path, default_output_dir, batch_size, compile_model
             dataloader,
             model,
             optimizer,
+            epochs,
             scheduler,
             logger,
             previous_state=(step, epoch),
@@ -145,7 +153,9 @@ if __name__ == "__main__":
     parser.add_argument("--default_output_dir", type=str, default="./output",
                         help="Default checkpoints & logs directory",)
     parser.add_argument("--batch_size", type=int, default=16, required=False,
-                        help="Batch size (default 16)")
+                        help="Batch size (default 16)",)
+    parser.add_argument("--epochs", type=int, default=5, required=False, 
+                        help="Train epochs")
 
     args = parser.parse_args()
 
@@ -153,5 +163,6 @@ if __name__ == "__main__":
         output_dir=args.output_dir,
         dataset_path=args.dataset_path,
         default_output_dir=args.default_output_dir,
-        batch_size=args.batch_size
+        batch_size=args.batch_size,
+        epochs=args.epochs,
     )
