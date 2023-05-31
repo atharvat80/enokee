@@ -1,19 +1,12 @@
-import time
+import pickle
 from pathlib import Path
 
 import torch
 
 
-def save_checkpoint(
-    output_dir, step, epoch, dataloader, model, optimizer, scheduler, max_chkpt=3
-):
+def save_checkpoint(output_dir, step, epoch, dataloader, model, optimizer, scheduler):
     # Create the output directory if it doesn't exist
     output_dir.mkdir(exist_ok=True)
-
-    # Generate the filename based on the current time
-    current_time = time.strftime("%Y-%m-%d_%H-%M-%S", time.gmtime())
-    filename = f"checkpoint-{current_time}.chkpt"
-    file_path = output_dir / filename
 
     # Save the checkpoint
     state_dict = {
@@ -25,31 +18,17 @@ def save_checkpoint(
     if scheduler is not None:
         state_dict["scheduler_state_dict"] = scheduler.state_dict()
 
-    torch.save(state_dict, file_path)
-
-    # Get a list of existing checkpoint files in the output directory
-    existing_files = sorted(
-        [f.name for f in output_dir.iterdir() if f.name.startswith("checkpoint-")]
-    )
-
-    # Delete the oldest checkpoint if max_chkpt files already exist
-    if len(existing_files) > max_chkpt:
-        oldest_file = output_dir / existing_files[0]
-        oldest_file.unlink()
+    with open(output_dir / "checkpoint.chkpt", "wb") as outfile:
+        torch.save(state_dict, outfile, pickle_protocol=pickle.HIGHEST_PROTOCOL)
 
 
 def load_checkpoint(output_dir: Path, device="cpu"):
-    # Get a list of existing checkpoint files in the output directory
-    existing_files = sorted(
-        [f.name for f in output_dir.iterdir() if f.name.startswith("checkpoint-")]
-    )
-
-    if not existing_files:
-        raise FileNotFoundError("No checkpoint files found in the output directory.")
-
     # Load the latest checkpoint file
-    latest_file = output_dir / existing_files[-1]
-    checkpoint = torch.load(latest_file, map_location=device)
+    infile = output_dir / "checkpoint.chkpt"
+    if not infile.exists():
+        raise FileNotFoundError("Checkpoints not found.")
+
+    checkpoint = torch.load(infile, map_location=device)
 
     # Load the checkpoint values
     step, epoch = checkpoint["step_epoch"]
