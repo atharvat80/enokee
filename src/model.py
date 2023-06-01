@@ -41,14 +41,14 @@ class EnokeeEncoder(nn.Module):
 
     def __init__(self, config, base_model_id="roberta-base"):
         super().__init__()
+        self.config = config
+        # RoBERTa backend
         self.base_model = AutoModel.from_pretrained(base_model_id)
         for param in self.base_model.parameters():
             param.requires_grad = False
-
-        self.num_entities = config.num_entities
-        self.d_model = config.d_model
-        self.n_heads = config.n_heads
-        self.attention = torch.nn.Linear(self.d_model, 1)
+        # Attention for mention tokens
+        self.attention = torch.nn.Linear(config.d_model, 1)
+        # Encoder
         self.layers = nn.ModuleList(
             [
                 nn.TransformerEncoderLayer(
@@ -61,9 +61,11 @@ class EnokeeEncoder(nn.Module):
                 for _ in range(config.n_layers)
             ]
         )
-
+        # classifier
         self.classifier = nn.Sequential(
-            nn.Linear(self.d_model, 100, bias=False), nn.Linear(100, self.num_entities)
+            nn.Dropout(config.dropout),
+            nn.Linear(config.d_model, 100, bias=False), 
+            nn.Linear(100, config.num_entities)
         )
 
     @classmethod
@@ -91,6 +93,7 @@ class EnokeeEncoder(nn.Module):
             max_mention_len,
             self.d_model,
             device=last_hidden_state.device,
+            dtype=last_hidden_state.dtype
         )
         for i in range(batch_size):
             for j in range(max_mentions):

@@ -49,7 +49,7 @@ def train(
             # forward pass
             inputs = tokenizer(sentences, spans).to(device)
             outputs = model(**inputs)
-            outputs = outputs.view(-1, 51000)
+            outputs = outputs.view(-1, model.config.num_entities)
             # loss and backward pass
             loss = criterion(softmax(outputs, dim=1), targets.flatten().to(device))
             loss.backward()
