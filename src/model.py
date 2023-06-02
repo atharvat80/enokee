@@ -91,7 +91,7 @@ class EnokeeEncoder(nn.Module):
             batch_size,
             max_mentions,
             max_mention_len,
-            self.d_model,
+            self.config.d_model,
             device=last_hidden_state.device,
             dtype=last_hidden_state.dtype
         )

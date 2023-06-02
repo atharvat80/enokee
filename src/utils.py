@@ -63,3 +63,35 @@ def get_num_param_and_model_size(model):
     size_all_mb = (size_params + size_buffers) / 1024**2
     print("Model size             : {:.3f}MB".format(size_all_mb))
     print("*" * 35)
+
+
+def classification_metrics(y_true, y_pred):  
+    assert y_true.shape == y_pred.shape, "y_true, y_pred shapes don't match" 
+    # Calculate accuracy
+    accuracy = torch.sum(y_true == y_pred)/len(y_true)
+    
+    # Calculate precision, recall, and F1-score for each class
+    unique_classes = torch.unique(torch.concatenate((y_true, y_pred)))
+    precision_scores = []
+    recall_scores = []
+    f1_scores = []
+    
+    for class_label in unique_classes:
+        true_positive = torch.sum((y_true == class_label) & (y_pred == class_label))
+        false_positive = torch.sum((y_true != class_label) & (y_pred == class_label))
+        false_negative = torch.sum((y_true == class_label) & (y_pred != class_label))
+        
+        precision = true_positive / (true_positive + false_positive + 1e-7)
+        recall = true_positive / (true_positive + false_negative + 1e-7)
+        f1 = 2 * (precision * recall) / (precision + recall + 1e-7)
+        
+        precision_scores.append(precision)
+        recall_scores.append(recall)
+        f1_scores.append(f1)
+    
+    # Calculate the macro-average precision, recall, and F1-score
+    precision_macro = torch.mean(torch.Tensor(precision_scores))
+    recall_macro = torch.mean(torch.Tensor(recall_scores))
+    f1_macro = torch.mean(torch.Tensor(f1_scores))
+    
+    return accuracy.item(), precision_macro.item(), recall_macro.item(), f1_macro.item()
