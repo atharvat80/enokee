@@ -17,6 +17,7 @@ class EnokeeConfig:
         n_layers=4,
         dropout=0.1,
         num_entities=51000,
+        finetune=False
     ):
         self.d_model = d_model
         self.n_heads = n_heads
@@ -24,6 +25,7 @@ class EnokeeConfig:
         self.n_layers = n_layers
         self.num_entities = num_entities
         self.dropout = dropout
+        self.finetune=finetune
 
     def to_dict(self):
         return {
@@ -33,6 +35,7 @@ class EnokeeConfig:
             "n_layers": self.n_layers,
             "num_entities": self.num_entities,
             "dropout": self.dropout,
+            "finetune": self.finetune,
         }
 
 
@@ -44,8 +47,9 @@ class EnokeeEncoder(nn.Module):
         self.config = config
         # RoBERTa backend
         self.base_model = AutoModel.from_pretrained(base_model_id)
-        for param in self.base_model.parameters():
-            param.requires_grad = False
+        if not config.finetune:
+            for param in self.base_model.parameters():
+                param.requires_grad = False
         # Attention for mention tokens
         self.attention = torch.nn.Linear(config.d_model, 1)
         # Encoder
