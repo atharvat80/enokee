@@ -1,5 +1,3 @@
-from collections import OrderedDict
-
 import torch
 import torch.nn as nn
 from transformers import AutoModel
@@ -68,16 +66,6 @@ class EnokeeEncoder(nn.Module):
     @classmethod
     def from_config(cls, config):
         return cls(config)
-
-    def get_state_dict(self):
-        state_dict = OrderedDict(
-            {
-                key: params
-                for key, params in self.state_dict().items()
-                if not (key.startswith("base_model"))
-            }
-        )
-        return state_dict
 
     def forward(self, input_ids, entity_position_ids, entity_attention_mask, **kwargs):
         # encode context

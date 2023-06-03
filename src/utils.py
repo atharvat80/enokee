@@ -12,7 +12,7 @@ def save_checkpoint(output_dir, step, epoch, dataloader, model, optimizer, sched
     state_dict = {
         "step_epoch": (step, epoch),
         "dataloader_state_dict": dataloader.get_state_dict(),
-        "model_state_dict": model.get_state_dict(),
+        "model_state_dict": model.state_dict(),
         "optimizer_state_dict": optimizer.state_dict(),
     }
     if scheduler is not None:
