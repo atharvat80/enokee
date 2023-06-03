@@ -44,18 +44,21 @@ class EnokeeEncoder(nn.Module):
         # Attention for mention tokens
         self.attention = torch.nn.Linear(config.d_model, 1)
         # Encoder
-        self.layers = nn.ModuleList(
-            [
-                nn.TransformerEncoderLayer(
-                    d_model=config.d_model,
-                    nhead=config.n_heads,
-                    dim_feedforward=config.d_ff,
-                    batch_first=True,
-                    dropout=config.dropout,
-                )
-                for _ in range(config.n_layers)
-            ]
-        )
+        if config.n_layers > 0:
+            self.layers = nn.ModuleList(
+                [
+                    nn.TransformerEncoderLayer(
+                        d_model=config.d_model,
+                        nhead=config.n_heads,
+                        dim_feedforward=config.d_ff,
+                        batch_first=True,
+                        dropout=config.dropout,
+                    )
+                    for _ in range(config.n_layers)
+                ]
+            )
+        else:
+            self.layers = []
         # classifier
         self.classifier = nn.Sequential(
             nn.Dropout(config.dropout),
@@ -94,7 +97,8 @@ class EnokeeEncoder(nn.Module):
         inputs = torch.matmul(scores.unsqueeze(-2), mentions).squeeze(-2)
 
         # pass the mention embeddings through encoder
-        for layer in self.layers:
-            inputs = layer(inputs)
+        if self.layers:
+            for layer in self.layers:
+                inputs = layer(inputs)
 
         return self.classifier(inputs)
