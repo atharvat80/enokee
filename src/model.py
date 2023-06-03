@@ -17,7 +17,9 @@ class EnokeeConfig:
         n_layers=4,
         dropout=0.1,
         num_entities=51000,
-        finetune=False
+        finetune=False,
+        base_model_id="roberta-base",
+        classifier_rank=100
     ):
         self.d_model = d_model
         self.n_heads = n_heads
@@ -26,27 +28,18 @@ class EnokeeConfig:
         self.num_entities = num_entities
         self.dropout = dropout
         self.finetune=finetune
-
-    def to_dict(self):
-        return {
-            "d_model": self.d_model,
-            "n_heads": self.n_heads,
-            "d_ff": self.d_ff,
-            "n_layers": self.n_layers,
-            "num_entities": self.num_entities,
-            "dropout": self.dropout,
-            "finetune": self.finetune,
-        }
+        self.base_model_id=base_model_id
+        self.classifier_rank=classifier_rank
 
 
 class EnokeeEncoder(nn.Module):
     """SPOT style encoder"""
 
-    def __init__(self, config, base_model_id="roberta-base"):
+    def __init__(self, config):
         super().__init__()
         self.config = config
         # RoBERTa backend
-        self.base_model = AutoModel.from_pretrained(base_model_id)
+        self.base_model = AutoModel.from_pretrained(config.base_model_id)
         if not config.finetune:
             for param in self.base_model.parameters():
                 param.requires_grad = False
@@ -68,8 +61,8 @@ class EnokeeEncoder(nn.Module):
         # classifier
         self.classifier = nn.Sequential(
             nn.Dropout(config.dropout),
-            nn.Linear(config.d_model, 100, bias=False), 
-            nn.Linear(100, config.num_entities)
+            nn.Linear(config.d_model, config.classifier_rank, bias=False), 
+            nn.Linear(config.classifier_rank, config.num_entities)
         )
 
     @classmethod
