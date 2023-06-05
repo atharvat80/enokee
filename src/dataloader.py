@@ -1,27 +1,23 @@
+import bz2
+import json
 from collections import OrderedDict
 
-import pandas as pd
 import torch
 
 
 class DataLoader:
-    def __init__(self, file_path, batch_size, nrows=0, skiprows=0):
+    def __init__(self, file_path, batch_size, n_rows=0, skip_lines=0):
         self.file_path = file_path
         self.batch_size = batch_size
-        self.nrows = nrows - skiprows
-        self.skipped = skiprows
-        self._initialize_iterator(skiprows)
+        self.n_rows = n_rows
+        self.lines_read = skip_lines
+        self._initialize_reader(skip_lines)
+        self.end_of_file = False
 
-    def __len__(self):
-        return self.nrows
-
-    def _initialize_iterator(self, skiprows=0):
-        self.iterator = pd.read_json(self.file_path, 
-                                     lines=True, 
-                                     chunksize=self.batch_size)
-        if skiprows > 0:
-            self.iterator.data.readlines(skiprows)
-            self.iterator.nrows_seen = skiprows
+    def _initialize_reader(self, skip_lines):
+        self.reader = bz2.open(self.file_path, "rt")
+        for _ in range(skip_lines):
+            next(self.reader)
 
     def _pad_targets(self, targets, padding_value=-1):
         # Find the length of the longest list
@@ -32,27 +28,45 @@ class DataLoader:
         ]
         return torch.LongTensor(padded_targets)
 
+    def __len__(self):
+        return self.n_rows - self.lines_read
+
+    def __del__(self):
+        self.reader.close()
+
     def __iter__(self):
         return self
 
     def __next__(self):
-        try:
-            batch = next(self.iterator)
-            sentences = batch.context.to_list()
-            targets = self._pad_targets(batch.targets)
-            spans = [[tuple(s) for s in sp] for sp in batch.spans.to_list()]
-            return sentences, spans, targets
-        except StopIteration:
-            self._initialize_iterator()  # Reset iterator
+        contexts, spans, targets = [], [], []
+        for _ in range(self.batch_size):
+            line = self.reader.readline()
+            # check for end of file
+            if not line:
+                self.end_of_file = True
+                break
+            # else parse entry
+            self.lines_read += 1
+            entry = json.loads(line)
+            contexts.append(entry["context"])
+            targets.append(entry["targets"])
+            spans.append([tuple(i) for i in entry["spans"]])
+
+        if not contexts:
+            self.reader.seek(0)
+            self.lines_read = 0
+            self.end_of_file = False
             raise StopIteration
+
+        return contexts, spans, self._pad_targets(targets)
 
     def get_state_dict(self):
         return OrderedDict(
             {
                 "file_path": self.file_path,
                 "batch_size": self.batch_size,
-                "nrows": self.nrows,
-                "rows_read": self.iterator.nrows_seen,
+                "n_rows": self.n_rows,
+                "lines_read": self.lines_read,
             }
         )
 
@@ -61,7 +75,7 @@ class DataLoader:
         dataloader = cls(
             state_dict["file_path"],
             state_dict["batch_size"],
-            state_dict["nrows"],
-            state_dict["rows_read"],
+            n_rows=state_dict["n_rows"],
+            skip_lines=state_dict["lines_read"],
         )
         return dataloader
