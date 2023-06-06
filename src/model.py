@@ -42,7 +42,9 @@ class EnokeeEncoder(nn.Module):
             for param in self.base_model.parameters():
                 param.requires_grad = False
         # Attention for mention tokens
-        self.attention = torch.nn.Linear(config.d_model, 1)
+        # self.attention = torch.nn.Linear(config.d_model, 1)
+        self.layer_norm = nn.LayerNorm(config.d_model)
+        self.dropout = nn.Dropout(config.dropout)
         # Encoder
         if config.n_layers > 0:
             self.layers = nn.ModuleList(
@@ -93,8 +95,12 @@ class EnokeeEncoder(nn.Module):
                     mentions[i, j, x, :] = last_hidden_state[i, x, :]
 
         # apply self attention to combine tokens of a mention into a singel vector
-        scores = nn.functional.softmax(self.attention(mentions).squeeze(-1), dim=-1)
-        inputs = torch.matmul(scores.unsqueeze(-2), mentions).squeeze(-2)
+        # scores = nn.functional.softmax(self.attention(mentions).squeeze(-1), dim=-1)
+        # inputs = torch.matmul(scores.unsqueeze(-2), mentions).squeeze(-2)
+
+        inputs = mentions.mean(dim=2)
+        inputs = self.layer_norm(inputs)
+        inputs = self.dropout(inputs)
 
         # pass the mention embeddings through encoder
         if self.layers:
